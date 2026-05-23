@@ -1,31 +1,67 @@
 const express = require('express');
 const router = express.Router();
-let deadlines = [
-  { id: 1, title: 'Q1 Deadline', dueDate: '2026-03-31', priority: 'high', team: 'Frontend TC', status: 'pending' },
-  { id: 2, title: 'Backend API', dueDate: '2026-04-15', priority: 'critical', team: 'Backend TC', status: 'in-progress' }
-  ];
-router.get('/', (req, res) => res.json(deadlines));
-router.get('/:id', (req, res) => {
-    const deadline = deadlines.find(d => d.id === parseInt(req.params.id));
-    res.json(deadline || { error: 'Not found' });
+const Deadline = require('../models/Deadline');
+
+// GET all deadlines (with optional filters)
+router.get('/', async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.team) filter.team = req.query.team;
+    if (req.query.priority) filter.priority = req.query.priority;
+    if (req.query.status) filter.status = req.query.status;
+    const deadlines = await Deadline.find(filter).sort({ dueDate: 1 });
+    res.json(deadlines);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch deadlines', details: err.message });
+  }
 });
-router.post('/', (req, res) => {
-    const newDeadline = {
-          id: deadlines.length ? Math.max(...deadlines.map(d => d.id)) + 1 : 1,
-          ...req.body,
-                status: 'pending',
-          createdAt: new Date()
-    };
-    deadlines.push(newDeadline);
-    res.status(201).json(newDeadline);
+
+// GET single deadline
+router.get('/:id', async (req, res) => {
+  try {
+    const deadline = await Deadline.findById(req.params.id);
+    if (!deadline) return res.status(404).json({ error: 'Not found' });
+    res.json(deadline);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch deadline', details: err.message });
+  }
 });
-router.put('/:id', (req, res) => {
-    const deadline = deadlines.find(d => d.id === parseInt(req.params.id));
-    if (deadline) Object.assign(deadline, req.body);
-    res.json(deadline || { error: 'Not found' });
+
+// POST create new deadline
+router.post('/', async (req, res) => {
+  try {
+    const deadline = new Deadline(req.body);
+    await deadline.save();
+    res.status(201).json(deadline);
+  } catch (err) {
+    res.status(400).json({ error: 'Failed to create deadline', details: err.message });
+  }
 });
-router.delete('/:id', (req, res) => {
-    deadlines = deadlines.filter(d => d.id !== parseInt(req.params.id));
-    res.json({ message: 'Deleted' });
+
+// PUT update deadline
+router.put('/:id', async (req, res) => {
+  try {
+    const deadline = await Deadline.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    if (!deadline) return res.status(404).json({ error: 'Not found' });
+    res.json(deadline);
+  } catch (err) {
+    res.status(400).json({ error: 'Failed to update deadline', details: err.message });
+  }
 });
+
+// DELETE deadline
+router.delete('/:id', async (req, res) => {
+  try {
+    const deadline = await Deadline.findByIdAndDelete(req.params.id);
+    if (!deadline) return res.status(404).json({ error: 'Not found' });
+    res.json({ message: 'Deleted', id: req.params.id });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete deadline', details: err.message });
+  }
+});
+
 module.exports = router;
