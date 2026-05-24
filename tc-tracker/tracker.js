@@ -6,6 +6,21 @@ const API=process.env.API_BASE_URL||'http://localhost:3000';
 const GUILD_ID=process.env.GUILD_ID;
 const CH_STATUS=process.env.CHANNEL_TC_STATUS;
 const CH_TASKS=process.env.CHANNEL_TASKS||process.env.CHANNEL_DEADLINE_DASHBOARD;
+const CH_CLOCK=process.env.CHANNEL_CLOCK_LOG;
+
+// Channel command restrictions
+const CHANNEL_RULES={
+  [process.env.CHANNEL_TASKS||process.env.CHANNEL_DEADLINE_DASHBOARD]:'Only /task assign is available in this channel.',
+  [process.env.CHANNEL_CLOCK_LOG]:'Only /clockin and /clockout are available in this channel.'
+};
+
+function wrongChannel(interaction,allowedCommands){
+  const rule=CHANNEL_RULES[interaction.channelId];
+  if(!rule)return false;
+  if(allowedCommands.includes(interaction.commandName))return false;
+  interaction.reply({content:rule,ephemeral:true});
+  return true;
+}
 
 // Workload thresholds
 const LOAD={AVAILABLE:4,BUSY:7}; // <4 = Available, 4-7 = Busy, >7 = At Capacity
@@ -144,7 +159,17 @@ const cmds=[
       .addStringOption(o=>o.setName('team').setDescription('Which queue').setRequired(true).addChoices({name:'Frontend TC',value:'Frontend TC'},{name:'Backend TC',value:'Backend TC'})))
     .addSubcommand(s=>s.setName('queue').setDescription('Show current rotation queue order'))
     .toJSON()
-];
+,
+
+  // /task assign — assign a task to a TC (only works in #⚡-tasks)
+  new SlashCommandBuilder()
+    .setName('task')
+    .setDescription('Task management')
+    .addSubcommand(s=>s.setName('assign').setDescription('Assign a task to a TC')
+      .addUserOption(o=>o.setName('tc').setDescription('TC to assign task to').setRequired(true))
+      .addStringOption(o=>o.setName('description').setDescription('Task description').setRequired(true))
+      .addStringOption(o=>o.setName('due').setDescription('Due date (MM/DD/YYYY)').setRequired(false)))
+    .toJSON()];
 
 // ─── BOT READY ───────────────────────────────────────────────────────────────
 client.once('ready',async()=>{
@@ -164,6 +189,7 @@ client.on('interactionCreate',async interaction=>{
 
   // ── /transaction commands ──
   if(interaction.isChatInputCommand()&&interaction.commandName==='transaction'){
+    if(wrongChannel(interaction,['transaction']))return;
     const sub=interaction.options.getSubcommand();
 
     if(sub==='new'){
@@ -216,6 +242,7 @@ client.on('interactionCreate',async interaction=>{
 
   // ── /tc commands ──
   if(interaction.isChatInputCommand()&&interaction.commandName==='tc'){
+    if(wrongChannel(interaction,['tc']))return;
     const sub=interaction.options.getSubcommand();
 
     if(sub==='board'){
@@ -275,6 +302,38 @@ client.on('interactionCreate',async interaction=>{
       const embed=new EmbedBuilder().setColor(0x5865F2).setTitle('📋 TC Rotation Queues')
         .addFields({name:'👤 Frontend TC Queue',value:fList,inline:true},{name:'⚙️ Backend TC Queue',value:bList,inline:true});
       return interaction.editReply({embeds:[embed]});
+    }
+  }
+
+  // ── /task commands (only in #⚡-tasks) ──
+  if(interaction.isChatInputCommand()&&interaction.commandName==='task'){
+    const sub=interaction.options.getSubcommand();
+    // Only allowed in #⚡-tasks channel
+    if(interaction.channelId!==CH_TASKS){
+      return interaction.reply({content:'Only /task assign is available in the <#'+CH_TASKS+'> channel.',ephemeral:true});
+    }
+    if(sub==='assign'){
+      await interaction.deferReply({ephemeral:true});
+      const tc=interaction.options.getUser('tc');
+      const description=interaction.options.getString('description');
+      const due=interaction.options.getString('due')||'Not specified';
+      const member=await interaction.guild.members.fetch(tc.id).catch(()=>null);
+      const displayName=member?member.displayName:tc.username;
+      // Post task assignment publicly to #⚡-tasks
+      const taskCh=client.channels.cache.get(CH_TASKS);
+      if(taskCh)await taskCh.send({
+        embeds:[new EmbedBuilder()
+          .setColor(0x5865F2)
+          .setTitle('⚡ Task Assigned')
+          .addFields(
+            {name:'📋 Task',value:description,inline:false},
+            {name:'👤 Assigned To',value:'<@'+tc.id+'> ('+displayName+')',inline:true},
+            {name:'📅 Due',value:due,inline:true},
+            {name:'📤 Assigned By',value:'<@'+interaction.user.id+'>',inline:true}
+          )
+          .setFooter({text:'BHAT Task System • '+new Date().toLocaleString('en-US',{timeZone:'Asia/Manila'})+' PHT'})]
+      });
+      return interaction.editReply({content:'✅ Task assigned to **'+displayName+'**'});
     }
   }
 
