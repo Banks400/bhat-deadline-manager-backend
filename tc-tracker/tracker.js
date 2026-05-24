@@ -297,9 +297,7 @@ client.on('interactionCreate',async interaction=>{
           content:'✅ Checked in! Your status: **'+c.label+'** ('+c.speed+')\nThe team status board has been updated.',
           components:[]
         });
-        // Post check-in notification to tasks channel
-        const taskCh=client.channels.cache.get(CH_TASKS);
-        if(taskCh)await taskCh.send({content:'👋 **'+interaction.user.displayName+'** checked in · '+c.label+' · '+c.speed+' · <t:'+Math.floor(Date.now()/1000)+':t>'});
+
         setTimeout(()=>refreshStatusBoard(),1000);
       }
     }
