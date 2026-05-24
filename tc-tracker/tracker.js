@@ -187,6 +187,12 @@ client.once('ready',async()=>{
 // ─── INTERACTIONS ────────────────────────────────────────────────────────────
 client.on('interactionCreate',async interaction=>{
 
+  // ── Channel guard: only /task assign works in #⚡-tasks ──
+  if(interaction.isChatInputCommand()&&interaction.channelId===CH_TASKS&&interaction.commandName!=='task'){
+    return interaction.reply({content:'❌ Only /task assign is available in this channel.',ephemeral:true});
+  }
+
+
   // ── /transaction commands ──
   if(interaction.isChatInputCommand()&&interaction.commandName==='transaction'){
     if(wrongChannel(interaction,['transaction']))return;
